@@ -19,7 +19,9 @@ export class UserService {
 
         return await this.userRepository.save(user);
     }
-
+    async getUserProfile(userId: number): Promise<User> {
+      return await this.userRepository.findOne({ where: { id: userId } });
+  }
     isInEgypt(latitude: number, longitude: number): boolean {
         // Logic to determine if coordinates are in Egypt.
         return true; // Placeholder
