@@ -2,24 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../db/user.schema';
+import { CreateUserDto } from './dto/create-user.dto';
 
 @Injectable()
-export class UsersService {
-  constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
-  ) {}
+export class UserService {
+    constructor(@InjectRepository(User) private userRepository: Repository<User>) {}
 
-  // Find a user by ID
-  async findOne(id: number): Promise<User | null> {
-    return this.usersRepository.findOneBy({ id });
-  }
+    async signUp(createUserDto: CreateUserDto): Promise<User> {
+        // Convert latitude/longitude to city name (can use a geocoding API or mock for now)
+        const city = 'Cairo'; // Placeholder
 
-  // Create a new user
-  async create(userData: Partial<User>): Promise<User> {
-    const user = this.usersRepository.create(userData);
-    return this.usersRepository.save(user);
-  }
+        const user = this.userRepository.create({
+            ...createUserDto,
+            city,
+        });
 
+        return await this.userRepository.save(user);
+    }
 
+    isInEgypt(latitude: number, longitude: number): boolean {
+        // Logic to determine if coordinates are in Egypt.
+        return true; // Placeholder
+    }
 }
