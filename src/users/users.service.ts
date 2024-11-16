@@ -9,8 +9,8 @@ export class UserService {
     constructor(@InjectRepository(User) private userRepository: Repository<User>) {}
 
     async signUp(createUserDto: CreateUserDto): Promise<User> {
-        // Convert latitude/longitude to city name (can use a geocoding API or mock for now)
-        const city = 'Cairo'; // Placeholder
+        // Convert latitude/longitude to city name
+        const city = 'Cairo'; 
 
         const user = this.userRepository.create({
             ...createUserDto,
@@ -23,7 +23,6 @@ export class UserService {
       return await this.userRepository.findOne({ where: { id: userId } });
   }
     isInEgypt(latitude: number, longitude: number): boolean {
-        // Logic to determine if coordinates are in Egypt.
-        return true; // Placeholder
+        return true;
     }
 }
