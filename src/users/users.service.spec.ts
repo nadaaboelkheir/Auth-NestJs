@@ -1,71 +1,131 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './users.service';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../db/user.schema';
-import { CreateUserDto } from './dto/create-user.dto';
+import { LocationService } from '../helpers/LocationService';
+import { JwtService } from '@nestjs/jwt';
+import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
+
+const mockUserRepository = {
+  findOneBy: jest.fn(),
+  create: jest.fn(),
+  save: jest.fn(),
+  findOne: jest.fn(),
+};
+
+const mockLocationService = {
+  getLocation: jest.fn(),
+};
+
+const mockJwtService = {
+  signAsync: jest.fn(),
+};
 
 describe('UserService', () => {
   let userService: UserService;
   let userRepository: Repository<User>;
+  let locationService: LocationService;
+  let jwtService: JwtService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserService,
-        {
-          provide: getRepositoryToken(User),
-          useClass: Repository,
-        },
+        { provide: getRepositoryToken(User), useValue: mockUserRepository },
+        { provide: LocationService, useValue: mockLocationService },
+        { provide: JwtService, useValue: mockJwtService },
       ],
     }).compile();
 
     userService = module.get<UserService>(UserService);
     userRepository = module.get<Repository<User>>(getRepositoryToken(User));
+    locationService = module.get<LocationService>(LocationService);
+    jwtService = module.get<JwtService>(JwtService);
   });
 
-  it('should be defined', () => {
-    expect(userService).toBeDefined();
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('should call repository.save() when signing up a user', async () => {
-    const createUserDto: CreateUserDto = {
-      name: 'Ahmed Ali',
-      email: 'ahmed.ali@example.com',
-      latitude: 30.0444,
-      longitude: 31.2357,
-    };
+  describe('create', () => {
+    it('should create a new user and return the user with a token', async () => {
+      const createUserDto = { 
+        name: 'John Doe', 
+        email: 'john@example.com', 
+        latitude: 30.0444, 
+        longitude: 31.2357 
+      };
+      const locationResponse = { city: 'Cairo', country: 'EG' };
+      const createdUser = { id: '1', ...createUserDto, city: 'Cairo' };
+      const token = 'mockToken';
 
-    const mockUser = {
-      ...createUserDto,
-      id: 1,
-      city: 'Cairo',
-    };
+      mockUserRepository.findOneBy.mockResolvedValue(null);
+      mockLocationService.getLocation.mockResolvedValue(locationResponse);
+      mockUserRepository.create.mockReturnValue(createdUser);
+      mockUserRepository.save.mockResolvedValue(createdUser);
+      mockJwtService.signAsync.mockResolvedValue(token);
 
-    jest.spyOn(userRepository, 'create').mockReturnValue(mockUser as User);
-    jest.spyOn(userRepository, 'save').mockResolvedValue(mockUser as User);
+      const result = await userService.create(createUserDto);
 
-    const result = await userService.signUp(createUserDto);
-    expect(result).toEqual(mockUser);
-    expect(userRepository.create).toHaveBeenCalledWith({
-      ...createUserDto,
-      city: 'Cairo',
+      expect(mockUserRepository.findOneBy).toHaveBeenCalledWith({ email: createUserDto.email });
+      expect(mockLocationService.getLocation).toHaveBeenCalledWith(createUserDto);
+      expect(mockUserRepository.create).toHaveBeenCalledWith({ ...createUserDto, city: 'Cairo' });
+      expect(mockUserRepository.save).toHaveBeenCalledWith(createdUser);
+      expect(mockJwtService.signAsync).toHaveBeenCalledWith({ userId: createdUser.id });
+      expect(result).toEqual({ user: createdUser, token });
     });
-    expect(userRepository.save).toHaveBeenCalledWith(mockUser);
+
+    it('should throw a ConflictException if the email already exists', async () => {
+      const createUserDto = { 
+        name: 'John Doe', 
+        email: 'john@example.com', 
+        latitude: 30.0444, 
+        longitude: 31.2357 
+      };
+      mockUserRepository.findOneBy.mockResolvedValue({ id: '1', email: 'john@example.com' });
+
+      await expect(userService.create(createUserDto)).rejects.toThrow(ConflictException);
+      expect(mockUserRepository.findOneBy).toHaveBeenCalledWith({ email: createUserDto.email });
+    });
+
+    it('should throw a BadRequestException if location is not in Egypt', async () => {
+      const createUserDto = { 
+        name: 'John Doe', 
+        email: 'john@example.com', 
+        latitude: 30.0444, 
+        longitude: 31.2357 
+      };
+      const locationResponse = { city: 'Cairo', country: 'US' };
+
+      mockUserRepository.findOneBy.mockResolvedValue(null);
+      mockLocationService.getLocation.mockResolvedValue(locationResponse);
+
+      await expect(userService.create(createUserDto)).rejects.toThrow(BadRequestException);
+      expect(mockLocationService.getLocation).toHaveBeenCalledWith(createUserDto);
+    });
   });
 
-  it('should call repository.findOne() and return a user profile', async () => {
-    const mockUser = {
-      id: 1,
-      name: 'Ahmed Ali',
-      email: 'ahmed.ali@example.com',
-      city: 'Cairo',
-    } as User;
+  describe('getUserProfile', () => {
+    it('should return the user profile', async () => {
+      const userId = '1';
+      const userProfile = { name: 'John Doe', email: 'john@example.com', city: 'Cairo' };
 
-    jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockUser);
+      mockUserRepository.findOne.mockResolvedValue(userProfile);
 
-    const result = await userService.getUserProfile(1);
-    expect(result).toEqual(mockUser);
-    expect(userRepository.findOne).toHaveBeenCalledWith({ where: { id: 1 } });
+      const result = await userService.getUserProfile(userId);
+
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({ where: { id: userId }, select: ['name', 'email', 'city'] });
+      expect(result).toEqual(userProfile);
+    });
+
+    it('should throw a NotFoundException if the user is not found', async () => {
+      const userId = '1';
+
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(userService.getUserProfile(userId)).rejects.toThrow(NotFoundException);
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({ where: { id: userId }, select: ['name', 'email', 'city'] });
+    });
   });
 });

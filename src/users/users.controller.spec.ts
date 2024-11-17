@@ -1,92 +1,144 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserController } from './users.controller';
 import { UserService } from './users.service';
+import { AuthGuard } from '../helpers/AuthGuard';
+import {
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { HttpException } from '@nestjs/common';
+
+const mockUserService = {
+  create: jest.fn(),
+  getUserProfile: jest.fn(),
+};
+
+const mockAuthGuard = {
+  canActivate: jest.fn(() => true),
+};
 
 describe('UserController', () => {
-  let controller: UserController;
-  let service: UserService;
+  let userController: UserController;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserController],
-      providers: [
-        {
-          provide: UserService,
-          useValue: {
-            signUp: jest.fn(),
-            isInEgypt: jest.fn().mockReturnValue(true),
-            getUserProfile: jest.fn(),
-          },
-        },
-      ],
-    }).compile();
+      providers: [{ provide: UserService, useValue: mockUserService }],
+    })
+      .overrideGuard(AuthGuard)
+      .useValue(mockAuthGuard)
+      .compile();
 
-    controller = module.get<UserController>(UserController);
-    service = module.get<UserService>(UserService);
+    userController = module.get<UserController>(UserController);
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('should sign up a user and return the created user', async () => {
-    const createUserDto: CreateUserDto = {
-      name: 'Ahmed Ali',
-      email: 'ahmed.ali@example.com',
-      latitude: 30.0444,
-      longitude: 31.2357,
-    };
+  describe('signup', () => {
+    it('should create a new user and return the user with a token', async () => {
+      const createUserDto: CreateUserDto = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        latitude: 30.0444,
+        longitude: 31.2357,
+      };
+      const createdUser = {
+        token: 'mockToken',
+        user: { id: '1', ...createUserDto, city: 'Cairo' },
+      };
 
-    const mockUser = {
-      id: '1',
-      ...createUserDto,
-      city: 'Cairo',
-    };
+      mockUserService.create.mockResolvedValue(createdUser);
 
-    jest.spyOn(service, 'signUp').mockResolvedValue(mockUser);
+      const result = await userController.signup(createUserDto);
 
-    const result = await controller.signUp(createUserDto);
-    expect(result).toEqual(mockUser);
-    expect(service.signUp).toHaveBeenCalledWith(createUserDto);
+      expect(mockUserService.create).toHaveBeenCalledWith(createUserDto);
+      expect(result).toEqual(createdUser);
+    });
+
+    it('should throw a ConflictException if the email already exists', async () => {
+      const createUserDto: CreateUserDto = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        latitude: 30.0444,
+        longitude: 31.2357,
+      };
+
+      mockUserService.create.mockRejectedValue(
+        new ConflictException('Email already exists'),
+      );
+
+      await expect(userController.signup(createUserDto)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockUserService.create).toHaveBeenCalledWith(createUserDto);
+    });
+
+    it('should throw a BadRequestException if invalid data is provided', async () => {
+      const createUserDto: any = {
+        email: 'john@example.com', // Missing name, latitude, and longitude
+      };
+
+      mockUserService.create.mockRejectedValue(
+        new BadRequestException('Invalid input body'),
+      );
+
+      await expect(userController.signup(createUserDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockUserService.create).toHaveBeenCalledWith(createUserDto);
+    });
   });
 
-  it('should reject signup outside Egypt', async () => {
-    jest.spyOn(service, 'isInEgypt').mockReturnValue(false);
+  describe('getProfile', () => {
+    it('should return the user profile', async () => {
+      const userId = '1';
+      const userProfile = {
+        name: 'John Doe',
+        email: 'john@example.com',
+        city: 'Cairo',
+      };
 
-    const createUserDto: CreateUserDto = {
-      name: 'Ahmed Ali',
-      email: 'ahmed.ali@example.com',
-      latitude: 35.0,
-      longitude: 40.0,
-    };
+      mockUserService.getUserProfile.mockResolvedValue(userProfile);
 
-    await expect(controller.signUp(createUserDto)).rejects.toThrow(
-      HttpException,
-    );
-  });
+      const result = await userController.getProfile(userId);
 
-  it('should return user profile', async () => {
-    const mockUser = {
-      id: '1',
-      name: 'Ahmed Ali',
-      email: 'ahmed.ali@example.com',
-      city: 'Cairo',
-      latitude: 30.0444,
-      longitude: 31.2357,
-    };
+      expect(mockUserService.getUserProfile).toHaveBeenCalledWith(userId);
+      expect(result).toEqual(userProfile);
+    });
 
-    jest.spyOn(service, 'getUserProfile').mockResolvedValue(mockUser);
+    it('should throw a NotFoundException if the user is not found', async () => {
+      const userId = '1';
 
-    const result = await controller.getProfile(1);
-    expect(result).toEqual(mockUser);
-    expect(service.getUserProfile).toHaveBeenCalledWith(1);
-  });
+      mockUserService.getUserProfile.mockRejectedValue(
+        new NotFoundException('User not found'),
+      );
 
-  it('should return 404 if user not found', async () => {
-    jest.spyOn(service, 'getUserProfile').mockResolvedValue(null);
+      await expect(userController.getProfile(userId)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockUserService.getUserProfile).toHaveBeenCalledWith(userId);
+    });
 
-    await expect(controller.getProfile(1)).rejects.toThrow(HttpException);
+    it('should throw an UnauthorizedException if the AuthGuard fails', async () => {
+      const userId = '1';
+
+      mockAuthGuard.canActivate.mockReturnValue(false);
+
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [UserController],
+        providers: [{ provide: UserService, useValue: mockUserService }],
+      })
+        .overrideGuard(AuthGuard)
+        .useValue(mockAuthGuard)
+        .compile();
+
+      const protectedController = module.get<UserController>(UserController);
+
+      await expect(protectedController.getProfile(userId)).rejects.toThrow();
+      expect(mockUserService.getUserProfile).not.toHaveBeenCalled();
+    });
   });
 });
