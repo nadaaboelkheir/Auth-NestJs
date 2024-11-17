@@ -40,7 +40,7 @@ describe('UserController', () => {
     };
 
     const mockUser = {
-      id: 1,
+      id: '1',
       ...createUserDto,
       city: 'Cairo',
     };
@@ -69,12 +69,12 @@ describe('UserController', () => {
 
   it('should return user profile', async () => {
     const mockUser = {
-      id: 1,
+      id: '1',
       name: 'Ahmed Ali',
       email: 'ahmed.ali@example.com',
       city: 'Cairo',
-      latitude: 30.0444,  
-      longitude: 31.2357, 
+      latitude: 30.0444,
+      longitude: 31.2357,
     };
 
     jest.spyOn(service, 'getUserProfile').mockResolvedValue(mockUser);

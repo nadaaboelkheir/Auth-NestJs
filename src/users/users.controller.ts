@@ -2,14 +2,21 @@ import {
   Controller,
   Post,
   Body,
-  HttpException,
   HttpStatus,
   Get,
   Param,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBody,
+  ApiResponse,
+  ApiParam,
+  ApiHeaders,
+} from '@nestjs/swagger';
 import { UserService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { AuthGuard } from '../helpers/AuthGuard';
 
 @Controller('user')
 @ApiTags('User')
@@ -18,26 +25,50 @@ export class UserController {
 
   @Post('signup')
   @ApiBody({ type: CreateUserDto })
-  async signUp(@Body() createUserDto: CreateUserDto) {
-    const { latitude, longitude } = createUserDto;
-
-    if (!this.userService.isInEgypt(latitude, longitude)) {
-      throw new HttpException(
-        'Sign up is restricted to Egyptian locations.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    return this.userService.signUp(createUserDto);
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'The created user',
+    example: {
+      token: 'string',
+      id: 'string',
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'Email already exists',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid input body',
+  })
+  signup(@Body() body: CreateUserDto) {
+    return this.userService.create(body);
   }
-  @Get(':user_id')
-  async getProfile(@Param('user_id') userId: number) {
-    const user = await this.userService.getUserProfile(userId);
-
-    if (!user) {
-      throw new HttpException('User not found', HttpStatus.NOT_FOUND);
-    }
-
-    return user;
+  @UseGuards(AuthGuard)
+  @Get('/:user_id')
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'The user profile',
+    example: {
+      name: 'string',
+      email: 'string',
+      city: 'string',
+    },
+  })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'User not found' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
+  @ApiParam({
+    name: 'user_id',
+    description: 'The target user id',
+    type: 'string',
+  })
+  @ApiHeaders([
+    {
+      name: 'token',
+      description: 'access token',
+    },
+  ])
+  getProfile(@Param('user_id') userId: string) {
+    return this.userService.getUserProfile(userId);
   }
 }

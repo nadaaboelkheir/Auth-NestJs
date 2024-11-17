@@ -1,22 +1,31 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { IsEmail, Length } from 'class-validator';
 
-@Entity()
+@Entity('users')
 export class User {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column({ length: 100 })
-    name: string;
+  @Column({ length: 100 })
+  @Length(1, 100, { message: 'Name must be between 1 and 100 characters' })
+  name: string;
 
-    @Column({ unique: true })
-    email: string;
+  @Column({ unique: true })
+  @IsEmail({}, { message: 'Email must be a valid email address' })
+  email: string;
 
-    @Column()
-    city: string;
+  @Column({ default: 'Unknown' })
+  city: string;
 
-    @Column("decimal", { precision: 9, scale: 6 })
-    latitude: number;
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt: Date;
 
-    @Column("decimal", { precision: 9, scale: 6 })
-    longitude: number;
+  @UpdateDateColumn({ type: 'timestamp' })
+  updatedAt: Date;
 }
